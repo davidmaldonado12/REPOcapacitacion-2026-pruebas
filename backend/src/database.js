@@ -101,8 +101,9 @@ export async function saveScore({ userId, score, total }) {
 export async function getLeaderboard(limit = 50) {
   const db = getDatabase();
   const parsedLimit = Number(limit);
+  const safeLimit = Number.isNaN(parsedLimit) ? 50 : parsedLimit;
 
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `
       SELECT
         u.name,
@@ -113,9 +114,8 @@ export async function getLeaderboard(limit = 50) {
       JOIN users u ON u.id = s.user_id
       GROUP BY s.user_id, u.name
       ORDER BY best_score DESC, last_attempt ASC
-      LIMIT ?
-    `,
-    [Number.isNaN(parsedLimit) ? 50 : parsedLimit],
+      LIMIT ${db.escape(safeLimit)}
+    `
   );
 
   return rows;

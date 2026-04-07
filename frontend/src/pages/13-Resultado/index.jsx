@@ -20,14 +20,21 @@ export default function ResultPage() {
   const navigate = useNavigate();
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [leaderboardError, setLeaderboardError] = useState('');
 
   const { user, quiz } = state;
   const percentage = Math.round((quiz.score / quiz.totalQuestions) * 100);
 
   useEffect(() => {
     fetchLeaderboard()
-      .then(data => setLeaderboard(data.leaderboard))
-      .catch(err => console.error('Error fetching leaderboard:', err))
+      .then(data => {
+        setLeaderboard(data.leaderboard ?? []);
+        setLeaderboardError('');
+      })
+      .catch(err => {
+        console.error('Error fetching leaderboard:', err);
+        setLeaderboardError('No se pudo cargar el ranking global en este momento.');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -91,6 +98,14 @@ export default function ResultPage() {
           {loading ? (
             <div className="h-64 flex items-center justify-center">
               <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
+            </div>
+          ) : leaderboardError ? (
+            <div className="rounded-xl border border-error/20 bg-error/5 px-6 py-8 text-center text-sm text-error">
+              {leaderboardError}
+            </div>
+          ) : leaderboard.length === 0 ? (
+            <div className="rounded-xl border border-outline-variant/20 bg-white px-6 py-8 text-center text-sm text-on-surface-variant">
+              Aun no hay resultados en el ranking global.
             </div>
           ) : (
             <TablaResultados rows={leaderboard} currentUser={user.name} />
