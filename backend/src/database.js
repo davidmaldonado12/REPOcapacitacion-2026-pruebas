@@ -1,94 +1,138 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import mysql from 'mysql2/promise';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+let pool;
 
-// Ruta al archivo .db — compatible con Railway (usa variable de entorno si existe)
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../data/database.db');
+function getSslConfig() {
+  const useSsl = process.env.MYSQL_SSL === 'true';
+  if (!useSsl) return undefined;
 
-let db;
+  const rejectUnauthorized = process.env.MYSQL_SSL_REJECT_UNAUTHORIZED !== 'false';
+  return { rejectUnauthorized };
+}
+
+function getConnectionConfig() {
+  if (process.env.MYSQL_URL) {
+    return {
+      uri: process.env.MYSQL_URL,
+      waitForConnections: true,
+      connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 10),
+      queueLimit: 0,
+      ssl: getSslConfig(),
+    };
+  }
+
+  return {
+    host: process.env.MYSQLHOST || process.env.MYSQL_HOST || '127.0.0.1',
+    port: Number(process.env.MYSQLPORT || process.env.MYSQL_PORT || 3306),
+    user: process.env.MYSQLUSER || process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD || '',
+    database: process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || 'railway',
+    waitForConnections: true,
+    connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT || 10),
+    queueLimit: 0,
+    ssl: getSslConfig(),
+  };
+}
 
 export function getDatabase() {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL'); // Mejor performance en concurrencia
+  if (!pool) {
+    const config = getConnectionConfig();
+    pool = config.uri
+      ? mysql.createPool(config.uri, {
+          waitForConnections: config.waitForConnections,
+          connectionLimit: config.connectionLimit,
+          queueLimit: config.queueLimit,
+          ssl: config.ssl,
+        })
+      : mysql.createPool(config);
   }
-  return db;
+
+  return pool;
 }
 
-export function initializeDatabase() {
+export async function initializeDatabase() {
   const db = getDatabase();
 
-  // Tabla de usuarios (intento de quiz)
-  db.exec(`
+  await db.query(`
     CREATE TABLE IF NOT EXISTS users (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      name       TEXT    NOT NULL,
-      email      TEXT    NOT NULL,
-      created_at DATETIME DEFAULT (datetime('now'))
-    );
+      id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
   `);
 
-  // Tabla de puntajes
-  db.exec(`
+  await db.query(`
     CREATE TABLE IF NOT EXISTS scores (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id       INTEGER NOT NULL REFERENCES users(id),
-      score         INTEGER NOT NULL DEFAULT 0,
-      total         INTEGER NOT NULL,
-      completed_at  DATETIME DEFAULT (datetime('now'))
-    );
+      id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      score INT NOT NULL DEFAULT 0,
+      total INT NOT NULL,
+      completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_scores_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
+    )
   `);
 
-  console.log('Base de datos inicializada en:', DB_PATH);
+  console.log('Base de datos MySQL inicializada.');
 }
 
-// --- USERS ---
-
-export function createUser({ name, email }) {
+export async function createUser({ name, email }) {
   const db = getDatabase();
-  const stmt = db.prepare(`INSERT INTO users (name, email) VALUES (?, ?)`);
-  const result = stmt.run(name, email);
-  return result.lastInsertRowid;  // Retorna el id del usuario creado
+  const [result] = await db.execute(
+    'INSERT INTO users (name, email) VALUES (?, ?)',
+    [name, email],
+  );
+
+  return result.insertId;
 }
 
-// --- SCORES ---
-
-export function saveScore({ userId, score, total }) {
+export async function saveScore({ userId, score, total }) {
   const db = getDatabase();
-  const stmt = db.prepare(`
-    INSERT INTO scores (user_id, score, total) VALUES (?, ?, ?)
-  `);
-  const result = stmt.run(userId, score, total);
-  return result.lastInsertRowid;
+  const [result] = await db.execute(
+    'INSERT INTO scores (user_id, score, total) VALUES (?, ?, ?)',
+    [userId, score, total],
+  );
+
+  return result.insertId;
 }
 
-// Leaderboard: mejor puntaje por usuario, ordenado de mayor a menor
-export function getLeaderboard(limit = 50) {
+export async function getLeaderboard(limit = 50) {
   const db = getDatabase();
-  return db.prepare(`
-    SELECT
-      u.name,
-      MAX(s.score)              AS best_score,
-      s.total,
-      MAX(s.completed_at)       AS last_attempt
-    FROM scores s
-    JOIN users u ON u.id = s.user_id
-    GROUP BY s.user_id
-    ORDER BY best_score DESC, last_attempt ASC
-    LIMIT ?
-  `).all(limit);
+  const parsedLimit = Number(limit);
+
+  const [rows] = await db.execute(
+    `
+      SELECT
+        u.name,
+        MAX(s.score) AS best_score,
+        MAX(s.total) AS total,
+        MAX(s.completed_at) AS last_attempt
+      FROM scores s
+      JOIN users u ON u.id = s.user_id
+      GROUP BY s.user_id, u.name
+      ORDER BY best_score DESC, last_attempt ASC
+      LIMIT ?
+    `,
+    [Number.isNaN(parsedLimit) ? 50 : parsedLimit],
+  );
+
+  return rows;
 }
 
-// Puntaje de un intento específico (para la pantalla de resultado inmediato)
-export function getScoreById(scoreId) {
+export async function getScoreById(scoreId) {
   const db = getDatabase();
-  return db.prepare(`
-    SELECT s.score, s.total, s.completed_at, u.name, u.email
-    FROM scores s
-    JOIN users u ON u.id = s.user_id
-    WHERE s.id = ?
-  `).get(scoreId);
+  const [rows] = await db.execute(
+    `
+      SELECT s.score, s.total, s.completed_at, u.name, u.email
+      FROM scores s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.id = ?
+      LIMIT 1
+    `,
+    [scoreId],
+  );
+
+  return rows[0] ?? null;
 }

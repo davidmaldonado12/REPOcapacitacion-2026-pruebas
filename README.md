@@ -1,29 +1,41 @@
-# Capacitación 2026 - Pruebas
+# Capacitacion 2026 - Pruebas
 
-Entorno de desarrollo full-stack con React + Vite (frontend), Node.js + Express (backend) y SQLite (base de datos local).
+Entorno de desarrollo full-stack con React + Vite (frontend), Node.js + Express (backend) y MySQL. En despliegue conjunto, Express sirve el frontend compilado.
 
-## Estructura del Proyecto
+## Estructura del proyecto
 
-```
+```text
 project-root/
-├── frontend/          # React + Vite
-│   ├── src/
-│   │   ├── App.jsx
-│   │   └── main.jsx
-│   ├── index.html
-│   ├── vite.config.js
-│   └── package.json
-├── backend/           # Node.js + Express
-│   ├── src/
-│   │   ├── index.js       # Entry point del servidor
-│   │   └── database.js    # Módulo central de base de datos
-│   ├── data/
-│   │   └── database.db    # Archivo SQLite local (auto-generado)
-│   └── package.json
-└── README.md
+|-- frontend/          # React + Vite
+|   |-- src/
+|   |-- index.html
+|   |-- vite.config.js
+|   `-- package.json
+|-- backend/           # Node.js + Express
+|   |-- src/
+|   |   |-- index.js       # Entry point del servidor
+|   |   `-- database.js    # Conexion e inicializacion de MySQL
+|   `-- package.json
+`-- README.md
 ```
 
-## Cómo Levantar el Entorno
+## Como levantar el entorno
+
+### Desde la raiz
+
+```bash
+npm install
+npm run dev:backend
+npm run dev:frontend
+```
+
+Para despliegue en Railway como un solo servicio:
+
+```bash
+npm install
+npm run build
+npm start
+```
 
 ### Backend
 
@@ -33,7 +45,7 @@ npm install
 npm run dev
 ```
 
-El servidor estará disponible en `http://localhost:3001`.
+El servidor estara disponible en `http://localhost:3001`.
 
 ### Frontend
 
@@ -43,24 +55,26 @@ npm install
 npm run dev
 ```
 
-La aplicación estará disponible en `http://localhost:5173`.
+La aplicacion estara disponible en `http://localhost:5173`.
 
-## Proxy de Desarrollo
+## Proxy de desarrollo
 
-El frontend está configurado con un proxy hacia el backend. Cualquier petición a `/api/...` desde el frontend se redirige automáticamente a `http://localhost:3001/api/...`, evitando problemas de CORS en desarrollo.
+El frontend usa un proxy de Vite para redirigir `/api/...` hacia el backend local. Si necesitas otro destino en desarrollo, define `VITE_DEV_API_PROXY_TARGET`.
 
 ## Despliegue en Railway
 
-| Aspecto | Configuración |
+| Aspecto | Configuracion |
 |---|---|
-| **Puerto** | `process.env.PORT` (Railway lo inyecta automáticamente) |
-| **DB Path** | Externalizar con `process.env.DB_PATH` para volumen persistente |
-| **Frontend build** | `npm run build` → servir desde Express o como servicio separado |
-| **Variables de entorno** | Definir en Railway Dashboard; replicar en `.env` local |
-| **Start script** | `npm start` → arranca el servidor |
+| **Puerto** | `process.env.PORT` |
+| **Base de datos** | `MYSQL_URL` o `MYSQLHOST` + `MYSQLPORT` + `MYSQLUSER` + `MYSQLPASSWORD` + `MYSQLDATABASE` |
+| **CORS** | `CORS_ORIGIN` solo si frontend y backend van en dominios distintos |
+| **Build command** | `npm run build` |
+| **Start command** | `npm start` |
+| **Root directory** | Raiz del repositorio |
 
 ## Notas
 
-- El archivo `database.db` **no se commitea** (está en `.gitignore`).
-- `database.js` es el módulo central para toda interacción con la base de datos.
-- Para migrar de SQLite a PostgreSQL, solo se modifica `database.js`.
+- `backend/src/database.js` centraliza la conexion a MySQL y crea las tablas `users` y `scores` si no existen.
+- En despliegue conjunto, `backend/src/index.js` sirve `frontend/dist` y mantiene los endpoints `/api/...`.
+- El frontend consume la API mediante `VITE_API_URL` si se despliega separado, y con ruta relativa cuando va junto al backend.
+- Usa `backend/.env.example` y `frontend/.env.example` como referencia para Railway.

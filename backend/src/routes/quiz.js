@@ -9,7 +9,7 @@ const router = Router();
  * Body: { name: string, email: string }
  * Response: { userId: number }
  */
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   const { name, email } = req.body;
 
   if (!name || !email) {
@@ -17,7 +17,7 @@ router.post('/register', (req, res) => {
   }
 
   try {
-    const userId = createUser({ name, email });
+    const userId = await createUser({ name, email });
     res.status(201).json({ userId });
   } catch (err) {
     res.status(500).json({ error: 'Error al registrar usuario.', detail: err.message });
@@ -30,7 +30,7 @@ router.post('/register', (req, res) => {
  * Body: { userId: number, score: number, total: number }
  * Response: { scoreId: number, rank: number }
  */
-router.post('/score', (req, res) => {
+router.post('/score', async (req, res) => {
   const { userId, score, total } = req.body;
 
   if (userId == null || score == null || total == null) {
@@ -38,10 +38,10 @@ router.post('/score', (req, res) => {
   }
 
   try {
-    const scoreId = saveScore({ userId, score, total });
+    const scoreId = await saveScore({ userId, score, total });
 
     // Calcular posición en el leaderboard al momento del guardado
-    const leaderboard = getLeaderboard(1000);
+    const leaderboard = await getLeaderboard(1000);
     const rank = leaderboard.findIndex(e => e.name && e.best_score === score) + 1;
 
     res.status(201).json({ scoreId, rank });
@@ -55,9 +55,9 @@ router.post('/score', (req, res) => {
  * Retorna el ranking global (máximo 50 entradas).
  * Response: { leaderboard: Array<{ name, best_score, total, last_attempt }> }
  */
-router.get('/leaderboard', (req, res) => {
+router.get('/leaderboard', async (req, res) => {
   try {
-    const leaderboard = getLeaderboard(50);
+    const leaderboard = await getLeaderboard(50);
     res.json({ leaderboard });
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener leaderboard.', detail: err.message });
@@ -69,11 +69,11 @@ router.get('/leaderboard', (req, res) => {
  * Retorna el detalle de un intento específico.
  * Response: { score, total, name, completed_at }
  */
-router.get('/score/:scoreId', (req, res) => {
+router.get('/score/:scoreId', async (req, res) => {
   const { scoreId } = req.params;
 
   try {
-    const data = getScoreById(Number(scoreId));
+    const data = await getScoreById(Number(scoreId));
     if (!data) return res.status(404).json({ error: 'Puntaje no encontrado.' });
     res.json(data);
   } catch (err) {

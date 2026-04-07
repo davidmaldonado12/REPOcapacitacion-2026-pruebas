@@ -1,4 +1,5 @@
-const BASE_URL = '/api/quiz';  // El proxy de Vite redirige al backend
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const BASE_URL = `${API_BASE}/api/quiz`;
 
 /**
  * Registra al usuario. Llama antes de iniciar el quiz.
